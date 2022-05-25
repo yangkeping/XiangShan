@@ -35,8 +35,21 @@ package utils
 import chisel3._
 import chisel3.util._
 
-abstract class SRAM_Array extends RawModule {
-  def init(clock: Clock, writeClock: Option[Clock]): Unit
+abstract class SRAM_Array[T <: FoundrySRAMExtraIO](extraIO: Option[T] = None) extends RawModule {
+  // Optional extra IO
+  val extra: Option[T] = if (extraIO.isDefined) Some(IO(extraIO.get)) else None
+  if (extra.isDefined) {
+    extra.get := DontCare
+    dontTouch(extra.get)
+  }
+
+  def init(clock: Clock, writeClock: Option[Clock]): Unit = {
+    if (extra.isDefined) {
+      // default value
+      extra.get := DontCare
+      FoundrySRAMExtraIO.addExtraInstance(extra.get)
+    }
+  }
   def read(addr: UInt): UInt
   def read(addr: UInt, enable: Bool): UInt = {
     var rdata = 0.U
@@ -49,7 +62,8 @@ abstract class SRAM_Array extends RawModule {
   def write(addr: UInt, data: UInt, mask: UInt): Unit
 }
 
-class SRAM_Array_1P(depth: Int, width: Int, maskSegments: Int) extends SRAM_Array {
+class SRAM_Array_1P[T <: FoundrySRAMExtraIO](depth: Int, width: Int, maskSegments: Int, extraIO: Option[T] = None)
+  extends SRAM_Array(extraIO) {
   val RW0 = IO(new Bundle() {
     val clk   = Input(Clock())
     val addr  = Input(UInt(log2Ceil(depth).W))
@@ -79,7 +93,8 @@ class SRAM_Array_1P(depth: Int, width: Int, maskSegments: Int) extends SRAM_Arra
     }
   }
 
-  def init(clock: Clock, writeClock: Option[Clock] = None): Unit = {
+  override def init(clock: Clock, writeClock: Option[Clock] = None): Unit = {
+    super.init(clock, writeClock)
     dontTouch(RW0)
     RW0 := DontCare
     RW0.clk := clock
@@ -106,9 +121,11 @@ class SRAM_Array_1P(depth: Int, width: Int, maskSegments: Int) extends SRAM_Arra
 }
 
 // MCP is used to distinguish SRAMs in Verilog. MCP SRAM is the same as normal SRAM.
-class SRAM_Array_1P_MCP(depth: Int, width: Int, maskSegments: Int) extends SRAM_Array_1P(depth, width, maskSegments)
+class SRAM_Array_1P_MCP[T <: FoundrySRAMExtraIO](depth: Int, width: Int, maskSegments: Int, extraIO: Option[T] = None)
+  extends SRAM_Array_1P(depth, width, maskSegments, extraIO)
 
-class SRAM_Array_2P(depth: Int, width: Int, maskSegments: Int) extends SRAM_Array {
+class SRAM_Array_2P[T <: FoundrySRAMExtraIO](depth: Int, width: Int, maskSegments: Int, extraIO: Option[T] = None)
+  extends SRAM_Array(extraIO) {
   require(width % maskSegments == 0)
 
   val R0 = IO(new Bundle() {
@@ -148,7 +165,8 @@ class SRAM_Array_2P(depth: Int, width: Int, maskSegments: Int) extends SRAM_Arra
     }
   }
 
-  def init(clock: Clock, writeClock: Option[Clock]): Unit = {
+  override def init(clock: Clock, writeClock: Option[Clock]): Unit = {
+    super.init(clock, writeClock)
     dontTouch(R0)
     dontTouch(W0)
     R0 := DontCare
@@ -177,15 +195,16 @@ class SRAM_Array_2P(depth: Int, width: Int, maskSegments: Int) extends SRAM_Arra
 }
 
 object SRAM_Array {
-  def apply(clock: Clock, singlePort: Boolean, depth: Int, width: Int,
+  def apply[T <: FoundrySRAMExtraIO](clock: Clock, singlePort: Boolean, depth: Int, width: Int,
     maskSegments: Int = 1,
     MCP: Boolean = false,
-    writeClock: Option[Clock] = None
- ): SRAM_Array = {
+    writeClock: Option[Clock] = None,
+    extraIO: Option[T] = None
+ ): SRAM_Array[T] = {
     val array = (singlePort, MCP) match {
-      case (true, true) => Module(new SRAM_Array_1P_MCP(depth, width, maskSegments))
-      case (true, false) => Module(new SRAM_Array_1P(depth, width, maskSegments))
-      case (false, _) => Module(new SRAM_Array_2P(depth, width, maskSegments))
+      case (true, true) => Module(new SRAM_Array_1P_MCP(depth, width, maskSegments, extraIO))
+      case (true, false) => Module(new SRAM_Array_1P(depth, width, maskSegments, extraIO))
+      case (false, _) => Module(new SRAM_Array_2P(depth, width, maskSegments, extraIO))
     }
     array.init(clock, writeClock)
     array
@@ -259,7 +278,7 @@ class SRAMTemplate[T <: Data](
   val extra_reset = if (extraReset) Some(IO(Input(Bool()))) else None
 
   val wordType = UInt(gen.getWidth.W)
-  val array = SRAM_Array(clock, singlePort, set, way * gen.getWidth, way)
+  val array = SRAM_Array(clock, singlePort, set, way * gen.getWidth, way, extraIO = FoundrySRAMExtraIO(singlePort))
 
   val (resetState, resetSet) = (WireInit(false.B), WireInit(0.U))
 

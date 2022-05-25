@@ -407,6 +407,9 @@ class XSCoreImp(outer: XSCoreBase) extends LazyModuleImp(outer)
   // if l2 prefetcher use stream prefetch, it should be placed in XSCore
   io.l2_pf_enable := csrioIn.customCtrl.l2_pf_enable
 
+  // connect the sram extra IOs here
+  val sram_connector = FoundrySRAMExtraConnector()
+
   // Modules are reset one by one
   val resetTree = ResetGenNode(
     Seq(
