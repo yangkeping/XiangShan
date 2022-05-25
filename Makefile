@@ -56,7 +56,7 @@ $(TOP_V): $(SCALA_FILE)
 	mkdir -p $(@D)
 	mill -i XiangShan.runMain $(FPGATOP) -td $(@D)                      \
 		--config $(CONFIG) --full-stacktrace --output-file $(@F)    \
-		--num-cores $(NUM_CORES) $(RELEASE_ARGS)
+		--num-cores $(NUM_CORES) $(RELEASE_ARGS) --log-level trace --log-file chisel.log
 	sed -i -e 's/_\(aw\|ar\|w\|r\|b\)_\(\|bits_\)/_\1/g' $@
 	@git log -n 1 >> .__head__
 	@git diff >> .__diff__
