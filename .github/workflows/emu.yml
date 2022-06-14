@@ -32,7 +32,9 @@ jobs:
         run:
           python3 $GITHUB_WORKSPACE/.github/workflows/check_verilog.py build/XSTop.v
       - name: release
-        run:
+        run: |
+          python3 scripts/parser.py XSTop --xs-home $GITHUB_WORKSPACE \
+            --config DefaultConfig --prefix bosc_ --sram-replace
           tar -czf $WAVE_HOME/release-${HEAD_SHA}.tar.gz bosc_XSTop-Release*
 
   generate-fpga-verilog:
@@ -59,7 +61,9 @@ jobs:
           python3 $GITHUB_WORKSPACE/scripts/xiangshan.py \
             --generate --nanhu --config FPGAConfig
       - name: release
-        run:
+        run: |
+          python3 scripts/parser.py XSTop --xs-home $GITHUB_WORKSPACE \
+            --config FPGAConfig --no-extra-files
           tar -czf $WAVE_HOME/release-${HEAD_SHA}-fpga.tar.gz XSTop-Release*
 
   generate-sim-release:
