@@ -198,8 +198,10 @@ class XSTile(parenName:String = "Unknown")(implicit p: Parameters) extends LazyM
 
       val mbistInterfaceL2SRAM = if (l2cache.isDefined) {
         require(l2cache.get.module.mbist_sram.isDefined,"There is No L2 Mbist SRAM port!")
+        val responseMbistPipeline = l2cache.get.module.sliceMbistPipelines.head._1.get
         val intf = Some(Module(new MBISTInterface(
           Seq(l2cache.get.module.mbist_sram.get.params),
+          Seq(responseMbistPipeline.node.array_id),
           s"mbist_core${coreParams.HartId}_l2_sram_intf",
           isSRAM = true,
           1
@@ -209,8 +211,8 @@ class XSTile(parenName:String = "Unknown")(implicit p: Parameters) extends LazyM
         intf.get.toPipeline.head <> l2cache.get.module.mbist_sram.get
         mbist_extra_l2_sram.connectExtra(intf.get.extra.head)
         mbist_extra_l2_sram.connectPWR_MGNT(
-          l2cache.get.module.sliceMbistPipelines.head._1.get.PWR_MGNT.get._1,
-          l2cache.get.module.sliceMbistPipelines.head._1.get.PWR_MGNT.get._2
+          responseMbistPipeline.PWR_MGNT.get._1,
+          responseMbistPipeline.PWR_MGNT.get._2
         )
         intf
       }
@@ -219,8 +221,10 @@ class XSTile(parenName:String = "Unknown")(implicit p: Parameters) extends LazyM
       }
       val mbistInterfaceL2RF = if (l2cache.isDefined) {
         require(l2cache.get.module.mbist_rf.isDefined,"There is No L2 Mbist RF port!")
+        val responseMbistPipeline = l2cache.get.module.sliceMbistPipelines.head._2.get
         val intf = Some(Module(new MBISTInterface(
           Seq(l2cache.get.module.mbist_rf.get.params),
+          Seq(responseMbistPipeline.node.array_id),
           s"mbist_core${coreParams.HartId}_l2_rf_intf",
           isSRAM = false,
           1
@@ -230,8 +234,8 @@ class XSTile(parenName:String = "Unknown")(implicit p: Parameters) extends LazyM
         intf.get.toPipeline.head <> l2cache.get.module.mbist_rf.get
         mbist_extra_l2_rf.connectExtra(intf.get.extra.head)
         mbist_extra_l2_rf.connectPWR_MGNT(
-          l2cache.get.module.sliceMbistPipelines.head._2.get.PWR_MGNT.get._1,
-          l2cache.get.module.sliceMbistPipelines.head._2.get.PWR_MGNT.get._2
+          responseMbistPipeline.PWR_MGNT.get._1,
+          responseMbistPipeline.PWR_MGNT.get._2
         )
         intf
       }
@@ -241,6 +245,7 @@ class XSTile(parenName:String = "Unknown")(implicit p: Parameters) extends LazyM
 
       val mbistInterfaceCoreSRAM = Module(new MBISTInterface(
         Seq(core.module.mbist_sram.params),
+        Seq(core.module.coreMbistPipelineSram.get.node.array_id),
         s"mbist_core${coreParams.HartId}_core_sram_intf",
         isSRAM = true,
         1
@@ -256,6 +261,7 @@ class XSTile(parenName:String = "Unknown")(implicit p: Parameters) extends LazyM
 
       val mbistInterfaceCoreRF = Module(new MBISTInterface(
         Seq(core.module.mbist_rf.params),
+        Seq(core.module.coreMbistPipelineRf.get.node.array_id),
         s"mbist_core${coreParams.HartId}_core_rf_intf",
         isSRAM = false,
         1
