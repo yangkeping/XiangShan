@@ -568,7 +568,7 @@ class LoadUnit(implicit p: Parameters) extends XSModule with HasLoadHelper with 
   load_s2.io.dataInvalidSqIdx := io.lsq.forward.dataInvalidSqIdx // provide dataInvalidSqIdx to make wakeup faster
   load_s2.io.loadViolationQueryResp <> io.lsq.loadViolationQuery.resp
   load_s2.io.csrCtrl <> io.csrCtrl
-  load_s2.io.sentFastUop := RegEnable(io.fastUop.valid, load_s1.io.out.fire()) // RegNext is also ok
+  load_s2.io.sentFastUop := io.fastUop.valid
 
   // actually load s3
   io.lsq.dcacheRequireReplay := load_s2.io.dcacheRequireReplay
@@ -596,13 +596,16 @@ class LoadUnit(implicit p: Parameters) extends XSModule with HasLoadHelper with 
   // load_s2.io.dcacheResp.bits.data := Mux1H(RegNext(io.dcache.s1_hit_way), RegNext(io.dcache.s1_data))
   // assert(load_s2.io.dcacheResp.bits.data === io.dcache.resp.bits.data)
 
-  io.fastUop.valid := io.dcache.s1_hit_way.orR && // dcache hit
+  // now io.fastUop.valid is sent to RS in load_s2
+  io.fastUop.valid := RegNext(
+    io.dcache.s1_hit_way.orR && // dcache hit
     !io.dcache.s1_disable_fast_wakeup &&  // load fast wakeup should be disabled when dcache data read is not ready
     load_s1.io.in.valid && // valid laod request
     !load_s1.io.dtlbResp.bits.fast_miss && // not mmio or tlb miss, pf / af not included here
     !io.lsq.forward.dataInvalidFast && // forward failed
     !load_s1.io.needLdVioCheckRedo // load-load violation check: load paddr cam struct hazard
-  io.fastUop.bits := load_s1.io.out.bits.uop
+  ) && !RegNext(load_s1.io.out.bits.uop.robIdx.needFlush(io.redirect))
+  io.fastUop.bits := RegNext(load_s1.io.out.bits.uop)
 
   XSDebug(load_s0.io.out.valid,
     p"S0: pc ${Hexadecimal(load_s0.io.out.bits.uop.cf.pc)}, lId ${Hexadecimal(load_s0.io.out.bits.uop.lqIdx.asUInt)}, " +
@@ -635,10 +638,14 @@ class LoadUnit(implicit p: Parameters) extends XSModule with HasLoadHelper with 
 
   load_s2.io.out.ready := true.B
 
-  io.ldout.bits := Mux(hitLoadOut.valid, hitLoadOut.bits, io.lsq.ldout.bits)
-  io.ldout.valid := hitLoadOut.valid || io.lsq.ldout.valid
+  val load_wb_reg = RegNext(Mux(hitLoadOut.valid, hitLoadOut.bits, io.lsq.ldout.bits))
+  io.ldout.bits := load_wb_reg
+  io.ldout.valid := RegNext(hitLoadOut.valid || io.lsq.ldout.valid) && !RegNext(load_s2.io.out.bits.uop.robIdx.needFlush(io.redirect))
 
-  io.delayedLoadError := hitLoadOut.valid && load_s2.io.delayedLoadError
+  io.ldout.bits.uop.cf.exceptionVec(loadAccessFault) := load_wb_reg.uop.cf.exceptionVec(loadAccessFault) ||
+     hitLoadOut.valid && load_s2.io.delayedLoadError
+
+  io.delayedLoadError := false.B
 
   io.lsq.ldout.ready := !hitLoadOut.valid
 
