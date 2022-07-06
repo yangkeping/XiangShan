@@ -525,10 +525,16 @@ class ICacheMainPipe(implicit p: Parameters) extends ICacheModule
   reservedRefillData(1) := DataHoldBypass(data = missSlot(1).m_data, valid = miss_1_s2_0 || miss_1_s2_1)
 
   /*** miss state machine ***/
+  def only_pmp_af(portNum: Int) =  s2_except_pmp_af(portNum) && !s2_port_hit(portNum) && !s2_except(portNum)
 
   switch(wait_state){
     is(wait_idle){
-      when(miss_0_except_1_latch){
+      when(only_pmp_af(0) || only_pmp_af(1) || s2_mmio){
+        //should not send req to MissUnit when there is an access exception in PMP
+        //But to avoid using pmp exception in control signal (like s2_fire), should delay 1 cycle.
+        //NOTE: pmp exception cache line also could hit in ICache, but the result is meaningless. Just give the exception signals.
+        wait_state := wait_finish
+      }.elsewhen(miss_0_except_1_latch){
         wait_state :=  Mux(toMSHR(0).ready, wait_queue_ready ,wait_idle )
       }.elsewhen( only_0_miss_latch  || miss_0_hit_1_latch){
         wait_state :=  Mux(toMSHR(0).ready, wait_queue_ready ,wait_idle )
