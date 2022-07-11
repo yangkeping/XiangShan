@@ -46,7 +46,7 @@ class DispatchQueue(size: Int, enqnum: Int, deqnum: Int)(implicit p: Parameters)
 
   // queue data array
   val data = Reg(Vec(size, new MicroOp))
-  val dataModule = Module(new SyncDataModuleTemplate(new MicroOp, size, deqnum, enqnum))
+  val dataModule = Module(new SyncDataModuleTemplate(new MicroOp, size, deqnum, enqnum, "DispatchQueue"))
   val stateEntries = RegInit(VecInit(Seq.fill(size)(s_invalid)))
 
   class DispatchQueuePtr extends CircularQueuePtr[DispatchQueuePtr](size)
