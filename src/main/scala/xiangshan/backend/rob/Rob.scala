@@ -562,7 +562,8 @@ class RobImp(outer: Rob)(implicit p: Parameters) extends LazyModuleImp(outer)
   val misPredBlock = misPredBlockCounter(0)
 
   io.commits.isWalk := state =/= s_idle
-  val commit_v = Mux(state === s_idle, VecInit(deqPtrVec.map(ptr => valid(ptr.value))), VecInit(walkPtrVec.map(ptr => valid(ptr.value))))
+  val walk_v = VecInit(walkPtrVec.map(ptr => valid(ptr.value)))
+  val commit_v = VecInit(deqPtrVec.map(ptr => valid(ptr.value)))
   // store will be commited iff both sta & std have been writebacked
   val commit_w = VecInit(deqPtrVec.map(ptr => writebacked(ptr.value) && store_data_writebacked(ptr.value)))
   val commit_exception = exceptionDataRead.valid && !isAfter(exceptionDataRead.bits.robIdx, deqPtrVec.last)
@@ -576,15 +577,19 @@ class RobImp(outer: Rob)(implicit p: Parameters) extends LazyModuleImp(outer)
     io.commits.valid(i) := commit_v(i) && commit_w(i) && !isBlocked && !misPredBlock && !isReplaying && !lastCycleFlush && !hasWFI
     io.commits.info(i).connectDispatchData(dispatchDataRead(i))
     io.commits.info(i).pc := debug_microOp(deqPtrVec(i).value).cf.pc
-    io.commits.walkValid(i) := DontCare
+    when (io.commits.isWalk) {
+      io.commits.valid(i) := io.commits.walkValid(i)
+    }
 
-    when (state === s_walk) {
-      io.commits.valid(i) := commit_v(i) && shouldWalkVec(i)
-      io.commits.walkValid(i) := commit_v(i) && shouldWalkVec(i)
-    }.elsewhen(state === s_extrawalk) {
-      io.commits.valid(i) := (if (i < RenameWidth) usedSpaceForMPR(RenameWidth-i-1) else false.B)
-      io.commits.walkValid(i) := (if (i < RenameWidth) usedSpaceForMPR(RenameWidth-i-1) else false.B)
-      io.commits.info(i)  := (if (i < RenameWidth) extraSpaceForMPR(RenameWidth-i-1) else DontCare)
+    io.commits.walkValid(i) := walk_v(i) && shouldWalkVec(i)
+    when (state === s_extrawalk) {
+      if (i < RenameWidth) {
+        io.commits.walkValid(i) := usedSpaceForMPR(RenameWidth - i - 1)
+        io.commits.info(i) := extraSpaceForMPR(RenameWidth - i - 1)
+      }
+      else {
+        io.commits.walkValid(i) := false.B
+      }
     }
 
     XSInfo(state === s_idle && io.commits.valid(i),
