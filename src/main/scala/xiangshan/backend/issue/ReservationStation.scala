@@ -267,11 +267,23 @@ class ReservationStation(params: RSParams)(implicit p: Parameters) extends XSMod
   validAfterAllocate := statusArray.io.isValidNext | validUpdateByAllocate
   select.io.validVec := validAfterAllocate
 
+  // FIXME: this allocation ready bits can be used with naive/circ selection policy only.
+  val numEmptyEntries = PopCount(statusArray.io.isValid.asBools.map(v => !v))
+  val numAllocateS1 = PopCount(statusArray.io.update.map(_.enable))
+  val numAllocateS0 = PopCount(s0_doEnqueue)
+  val numDeq = PopCount(RegNext(VecInit(statusArray.io.deqResp.map(resp => resp.valid && resp.bits.success))))
+  // why (params.numDeq + 2): 1 empty for allocation + at most numDeq leaving the RS + 1 for width gen
+  val leftEmpty = Reg(Vec(params.numEnq, UInt(log2Ceil(params.numDeq + 2).W)))
   for (i <- 0 until params.numEnq) {
-    io.fromDispatch(i).ready := select.io.allocate(i).valid
+    val realEmptyNumber = (numEmptyEntries - (numAllocateS1 +& i.U)) - numAllocateS0
+    leftEmpty(i) := Mux(realEmptyNumber > params.numEnq.U, (params.numDeq + 1).U, realEmptyNumber)
+    // realEmptyNumber may underflow to negative numbers
+    // We use io.fromDispatch(i - 1).ready to detect the underflow. Only one more AND is needed.
+    val notUnderflow = if (i == 0) true.B else io.fromDispatch(i - 1).ready
+    io.fromDispatch(i).ready := leftEmpty(i) > numDeq && notUnderflow
+    XSError(s0_doEnqueue(i) && !select.io.allocate(i).valid, s"port $i should not enqueue\n")
     s0_enqFlushed(i) := (if (params.dropOnRedirect) io.redirect.valid else io.fromDispatch(i).bits.robIdx.needFlush(io.redirect))
     s0_doEnqueue(i) := io.fromDispatch(i).fire && !s0_enqFlushed(i)
-    val wakeup = io.slowPorts.map(_.bits.uop.wakeup(io.fromDispatch(i).bits, params.exuCfg.get))
     val slowWakeup = io.slowPorts.map(_.bits.uop.wakeup(io.fromDispatch(i).bits, params.exuCfg.get))
     val fastWakeup = io.fastUopsIn.map(_.bits.wakeup(io.fromDispatch(i).bits, params.exuCfg.get))
     for (j <- 0 until params.numSrc) {
