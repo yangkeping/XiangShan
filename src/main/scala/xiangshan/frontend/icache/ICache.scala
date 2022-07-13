@@ -528,7 +528,9 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
   replacePipe.io.csr_parity_enable := io.csr_parity_enable
 
   if(cacheParams.hasPrefetch){
-    prefetchPipe.io.fromFtq <> io.prefetch
+    prefetchPipe.io.fromFtq.req.valid := DontCare//DelayN(io.prefetch.req.valid,3)
+    prefetchPipe.io.fromFtq.req.bits  := DontCare//DelayN(io.prefetch.req.bits,3)
+    io.prefetch.req.ready             := DontCare//DelayN( prefetchPipe.io.fromFtq.req.ready,3)
     when(!io.csr_pf_enable){
       prefetchPipe.io.fromFtq.req.valid := false.B
       io.prefetch.req.ready := true.B
@@ -648,9 +650,7 @@ class ICacheImp(outer: ICache) extends LazyModuleImp(outer) with HasICacheParame
 
   
   (0 until PortNumber).map{i => 
-      mainPipe.io.fetch(i).req.valid := io.fetch(i).req.valid //&& !fetchShouldBlock(i)
-      io.fetch(i).req.ready          :=  mainPipe.io.fetch(i).req.ready //&& !fetchShouldBlock(i)
-      mainPipe.io.fetch(i).req.bits  := io.fetch(i).req.bits
+    PipelineConnect(io.fetch(i).req, mainPipe.io.fetch(i).req,mainPipe.io.fetch(i).req.fire(), false.B)
   }
 
   // in L1ICache, we only expect GrantData and ReleaseAck
