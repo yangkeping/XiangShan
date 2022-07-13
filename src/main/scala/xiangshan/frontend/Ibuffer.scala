@@ -153,7 +153,7 @@ class Ibuffer(implicit p: Parameters) extends XSModule with HasCircularQueuePtrH
     val readData = if (i < DecodeWidth) deqData(i) else ibuf.io.rdata(i)
     nextStepData(i) := Mux(enqBypassEn, enqBypassData, readData)
   }
-  val deqEnable_n = io.out.map(o => !o.valid) :+ true.B
+  val deqEnable_n = io.out.map(o => !o.fire) :+ true.B
   for (i <- 0 until DecodeWidth) {
     deqData(i) := ParallelPriorityMux(deqEnable_n, nextStepData.drop(i).take(DecodeWidth + 1))
   }
