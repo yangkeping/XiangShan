@@ -456,8 +456,8 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
   val bpu_in_resp_ptr = Mux(bpu_in_stage === BP_S1, bpuPtr, bpu_in_resp.ftq_idx)
   val bpu_in_resp_idx = bpu_in_resp_ptr.value
 
-  // read ports:                                                ifuReq1 + ifuReq2 + ifuReq3 + commitUpdate2 + commitUpdate
-  val ftq_pc_mem = Module(new SyncDataModuleTemplate(new Ftq_RF_Components, FtqSize, 5, 1))
+  // read ports:                                               ifuReq1 + ifuReq2 + ifuReq3 + prefetchReq + commitUpdate2 + commitUpdate
+  val ftq_pc_mem = Module(new SyncDataModuleTemplate(new Ftq_RF_Components, FtqSize, 6, 1))
   // resp from uBTB
   ftq_pc_mem.io.wen(0) := bpu_in_fire
   ftq_pc_mem.io.waddr(0) := bpu_in_resp_idx
@@ -996,7 +996,11 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
 
   if(cacheParams.hasPrefetch){
     val prefetchPtr = RegInit(FtqPtr(false.B, 0.U))
+    val diff_prefetch_addr = WireInit(update_target(prefetchPtr.value)) //TODO: remove this
+
     prefetchPtr := prefetchPtr + io.toPrefetch.req.fire()
+
+    ftq_pc_mem.io.raddr.init.init.last := prefetchPtr.value
 
     when (bpu_s2_resp.valid && bpu_s2_resp.hasRedirect && !isBefore(prefetchPtr, bpu_s2_resp.ftq_idx)) {
       prefetchPtr := bpu_s2_resp.ftq_idx
@@ -1009,11 +1013,12 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
 
 
     val prefetch_is_to_send = WireInit(entry_fetch_status(prefetchPtr.value) === f_to_send)
-    val prefetch_addr = WireInit(update_target(prefetchPtr.value))
-    
+    val prefetch_addr = WireInit( ftq_pc_mem.io.rdata.init.init.last.startAddr)
+
     when (last_cycle_bpu_in && bpu_in_bypass_ptr === prefetchPtr) {
       prefetch_is_to_send := true.B
       prefetch_addr := last_cycle_bpu_target
+      diff_prefetch_addr := last_cycle_bpu_target // TODO: remove this
     }
     io.toPrefetch.req.valid := prefetchPtr =/= bpuPtr && prefetch_is_to_send
     io.toPrefetch.req.bits.target := prefetch_addr
@@ -1023,6 +1028,11 @@ class Ftq(implicit p: Parameters) extends XSModule with HasCircularQueuePtrHelpe
       val next = r.ftqIdx + 1.U
       prefetchPtr := next
     }
+
+    // TODO: remove this
+    XSError(io.toPrefetch.req.valid && diff_prefetch_addr =/= prefetch_addr,
+            f"\nprefetch_req_target wrong! prefetchPtr: ${prefetchPtr}, prefetch_addr: ${Hexadecimal(prefetch_addr)} diff_prefetch_addr: ${Hexadecimal(diff_prefetch_addr)}\n")
+
 
     XSError(isBefore(bpuPtr, prefetchPtr) && !isFull(bpuPtr, prefetchPtr), "\nprefetchPtr is before bpuPtr!\n")
     XSError(isBefore(prefetchPtr, ifuPtr) && !isFull(ifuPtr, prefetchPtr), "\nifuPtr is before prefetchPtr!\n")
