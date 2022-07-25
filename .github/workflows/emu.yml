@@ -3,7 +3,7 @@ name: EMU Test
 
 on:
   push:
-    branches: [ master, nanhu ]
+    branches: [ master, nanhu, timing-memblock-220725 ]
   pull_request:
     branches: [ master, nanhu ]
 
